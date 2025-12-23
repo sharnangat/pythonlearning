@@ -2,6 +2,14 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, API_ENDPOINTS } from '@/constants/api';
 
+export interface Role {
+  id: string;
+  role_name: string;
+  display_name?: string;
+  society_id?: string;
+  society_name?: string;
+}
+
 interface User {
   id: string;
   username: string;
@@ -10,6 +18,7 @@ interface User {
   last_name?: string;
   phone?: string;
   status?: string;
+  roles?: Role[];
 }
 
 interface AuthContextType {
@@ -52,12 +61,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (storedToken && storedUser) {
         setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
+        
+        // Refresh user profile to get latest roles
+        try {
+          const userProfile = await fetchUserProfile(storedToken);
+          await AsyncStorage.setItem(USER_KEY, JSON.stringify(userProfile));
+          setUser(userProfile);
+        } catch (error) {
+          console.error('Error refreshing profile:', error);
+          // Continue with stored user data if refresh fails
+        }
       }
     } catch (error) {
       console.error('Error loading stored auth:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchUserProfile = async (authToken: string): Promise<User> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.PROFILE}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to fetch profile');
+      }
+
+      return data.data.user;
+    } catch (error: any) {
+      console.error('Profile fetch error:', error);
+      throw error;
     }
   };
 
@@ -85,11 +128,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const { token: authToken, user: userData } = data.data;
       
+      // Fetch full user profile with roles
+      const userProfile = await fetchUserProfile(authToken);
+      
       await AsyncStorage.setItem(TOKEN_KEY, authToken);
-      await AsyncStorage.setItem(USER_KEY, JSON.stringify(userData));
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(userProfile));
       
       setToken(authToken);
-      setUser(userData);
+      setUser(userProfile);
     } catch (error: any) {
       console.error('Login error:', error);
       throw error;
@@ -114,11 +160,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const { token: authToken, user: userData } = data.data;
       
+      // Fetch full user profile with roles
+      const userProfile = await fetchUserProfile(authToken);
+      
       await AsyncStorage.setItem(TOKEN_KEY, authToken);
-      await AsyncStorage.setItem(USER_KEY, JSON.stringify(userData));
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(userProfile));
       
       setToken(authToken);
-      setUser(userData);
+      setUser(userProfile);
     } catch (error: any) {
       console.error('Registration error:', error);
       throw error;
