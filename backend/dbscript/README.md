@@ -24,6 +24,14 @@ This document describes the database schema for the Society Management System wi
 14. **society_subscriptions** - Active subscriptions for societies
 15. **payments** - Payment transactions
 16. **payment_methods** - Stored payment methods
+17. **maintenance_charges** - Configurable maintenance charges (Society Admin)
+18. **member_maintenance_charges** - Member-specific maintenance charges
+19. **maintenance_bills** - Monthly maintenance bills
+20. **maintenance_bill_items** - Bill line items
+21. **maintenance_payments** - Payment records for maintenance bills
+22. **visitors** - Visitor entry/exit management
+23. **visitor_pre_registrations** - Pre-registered visitor requests
+24. **visitor_logs** - Detailed visitor activity logs
 
 ## Key Features
 
@@ -38,6 +46,7 @@ This document describes the database schema for the Society Management System wi
 - Resource-based permissions (users, members, societies, assets, etc.)
 - Action-based permissions (create, read, update, delete, approve)
 - Permissions assigned to roles, not directly to users
+- **Permission Codes**: Each permission has a unique code (e.g., 'USR_CREATE', 'MEM_READ') for easy reference and API usage
 
 ### Society Management
 - Multiple societies support
@@ -45,6 +54,15 @@ This document describes the database schema for the Society Management System wi
 - Society-specific roles and permissions
 - Member management per society
 - **Super Admin Control**: Super admin can access and manage all societies
+
+### Monthly Maintenance Management
+- **Configurable Charges**: Society admin can configure maintenance charges
+- **Flexible Pricing**: Flat rate, per sqft, per member, per flat, or custom
+- **Automatic Billing**: Generate monthly bills automatically
+- **Payment Tracking**: Track payments against maintenance bills
+- **Member-Specific Charges**: Custom charges for individual members
+- **Bill Generation**: Automated bill generation with line items
+- **Payment Processing**: Record and track maintenance payments
 
 ### Subscription Management
 - **Monthly Subscription Model**: Based on member count
@@ -81,6 +99,12 @@ Permissions are organized by resource:
 - **subscriptions** - Subscription management
 - **payments** - Payment processing
 - **plans** - Plan management
+- **maintenance_charges** - Maintenance charge configuration (Society Admin)
+- **maintenance_bills** - Maintenance bill management
+- **maintenance_payments** - Maintenance payment processing
+- **visitors** - Visitor management and tracking
+- **visitor_pre_registrations** - Pre-registration and approval workflow
+- **visitor_logs** - Visitor activity audit trail
 
 ## Subscription Plans
 
@@ -109,10 +133,40 @@ Monthly Amount = Base Price + (Price per Member × Active Member Count)
 
 ### Setup Database
 
-```sql
--- Run the schema file
-\i dbscript/schema.sql
-```
+**Quick Setup (Recommended):**
+
+Choose one of the following methods:
+
+1. **PowerShell (Windows):**
+   ```powershell
+   cd backend/dbscript
+   .\setup_database.ps1
+   ```
+
+2. **Bash Script (Linux/Mac/Git Bash):**
+   ```bash
+   cd backend/dbscript
+   chmod +x setup_database.sh
+   ./setup_database.sh
+   ```
+
+3. **Node.js Script (Cross-platform):**
+   ```bash
+   cd backend/dbscript
+   npm install pg dotenv
+   node setup_database.js
+   ```
+
+4. **Manual Setup (Using psql):**
+   ```bash
+   # Create database
+   psql -U postgres -c "CREATE DATABASE soc_db;"
+   
+   # Run schema
+   psql -U postgres -d soc_db -f backend/dbscript/schema.sql
+   ```
+
+For detailed setup instructions, see [README_SETUP.md](README_SETUP.md)
 
 ### Create a Super Admin User
 
@@ -182,6 +236,64 @@ Super admin users have access to all societies automatically through their role 
 1. If user has `superAdmin` role (no society_id restriction)
 2. Super admin can view/manage all societies regardless of user_roles table entries
 3. All subscription and payment permissions are granted to superAdmin
+
+### Configure Monthly Maintenance Charges (Society Admin)
+
+```sql
+-- Create a flat rate maintenance charge
+INSERT INTO maintenance_charges (
+    society_id, charge_name, charge_type, base_amount, 
+    applicable_to, description, created_by
+)
+SELECT 
+    'society-uuid',
+    'Monthly Maintenance',
+    'flat_rate',
+    2000.00,
+    'all',
+    'Monthly maintenance charge for all members',
+    'admin-user-uuid';
+
+-- Create a per sqft charge
+INSERT INTO maintenance_charges (
+    society_id, charge_name, charge_type, base_amount, 
+    per_unit_rate, unit_type, applicable_to, description
+)
+SELECT 
+    'society-uuid',
+    'Maintenance per Sqft',
+    'per_sqft',
+    500.00,
+    5.00,
+    'sqft',
+    'owners',
+    'Maintenance based on flat area',
+    'admin-user-uuid';
+
+-- Generate monthly bills for a society
+SELECT generate_maintenance_bills(
+    'society-uuid'::UUID,
+    '2024-01-01'::DATE, -- Billing month
+    15 -- Due days
+);
+```
+
+### Maintenance Charge Types
+
+1. **flat_rate** - Fixed amount for all members
+2. **per_sqft** - Based on flat area (requires flat area data)
+3. **per_member** - Per member charge
+4. **per_flat** - Per flat charge
+5. **custom** - Custom calculation logic
+
+### Society Admin Permissions
+
+Society admin (`societyAdmin` role) has permissions to:
+- Create, read, update, delete maintenance charges (`MCH_CREATE`, `MCH_READ`, `MCH_UPDATE`, `MCH_DELETE`)
+- Generate monthly maintenance bills (`MCH_GENERATE`)
+- View and update maintenance bills (`MBILL_READ`, `MBILL_UPDATE`)
+- Process maintenance payments (`MPAY_PROCESS`)
+- Configure member-specific charges
 
 ## Security Considerations
 
